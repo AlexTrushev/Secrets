@@ -4,10 +4,6 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-// const encrypt = require("mongoose-encryption");
-// const md5 = require("md5");
-// const bcrypt = require("bcrypt");
-// const saltRounds = 10;
 const session = require("express-session");
 const passport = require("passport");
 const passportLocalMongoose = require("passport-local-mongoose");
@@ -43,22 +39,16 @@ const userSchema = new mongoose.Schema({
   email: String,
   password: String,
   googleId: String,
+  secret: String,
 });
 
 userSchema.plugin(passportLocalMongoose);
 userSchema.plugin(findOrCreate);
 
-// userSchema.plugin(encrypt, {
-//   secret: process.env.SECRET,
-//   encryptedFields: ["password"],
-// });
-
 const User = new mongoose.model("User", userSchema);
 
 passport.use(User.createStrategy());
 
-// passport.serializeUser(User.serializeUser());
-// passport.deserializeUser(User.deserializeUser());
 passport.serializeUser((user, done) => {
   done(null, user.id);
 });
@@ -77,9 +67,9 @@ passport.use(
       callbackURL: "http://localhost:3000/auth/google/secrets",
       userProfileURL: "https://www.googleapis.com/oauth2/v3/userinfo",
     },
-    function (accessToken, refreshToken, profile, cb) {
+    (accessToken, refreshToken, profile, cb) => {
       console.log("[profile]", profile);
-      User.findOrCreate({ googleId: profile.id }, function (err, user) {
+      User.findOrCreate({ googleId: profile.id }, (err, user) => {
         return cb(err, user);
       });
     }
@@ -112,8 +102,20 @@ app.get("/register", (req, res) => {
 });
 
 app.get("/secrets", (req, res) => {
+  User.find({ secret: { $ne: null } }, (err, foundUsers) => {
+    if (err) {
+      console.log(err);
+    } else {
+      if (foundUsers) {
+        res.render("secrets", { usersWithSecrets: foundUsers });
+      }
+    }
+  });
+});
+
+app.get("/submit", (req, res) => {
   if (req.isAuthenticated()) {
-    res.render("secrets");
+    res.render("submit");
   } else {
     res.redirect("/login");
   }
@@ -161,42 +163,23 @@ app.post("/login", (req, res) => {
   });
 });
 
+app.post("/submit", (req, res) => {
+  const submittedSecret = req.body.secret;
+
+  User.findById(req.user.id, (err, foundUser) => {
+    if (err) {
+      console.log(err);
+    } else {
+      if (foundUser) {
+        foundUser.secret = submittedSecret;
+        foundUser.save(() => {
+          res.redirect("/secrets");
+        });
+      }
+    }
+  });
+});
+
 app.listen(3000, () => {
   console.log("Server listening on port 3000");
 });
-
-// bcrypt register & login
-
-// app.post("/register", (req, res) => {
-//   bcrypt.hash(req.body.password, saltRounds, (err, hash) => {
-//     const newUser = new User({
-//       email: req.body.username,
-//       password: hash,
-//     });
-//     newUser.save((err) => {
-//       if (err) {
-//         console.log(err);
-//       } else {
-//         res.render("secrets");
-//       }
-//     });
-//   });
-// });
-
-// app.post("/login", (req, res) => {
-//   const username = req.body.username;
-//   const password = req.body.password;
-//   User.findOne({ email: username }, (err, foundUser) => {
-//     if (err) {
-//       console.log(err);
-//     } else {
-//       if (foundUser) {
-//         bcrypt.compare(password, foundUser.password, (err, result) => {
-//           if (result === true) {
-//             res.render("secrets");
-//           }
-//         });
-//       }
-//     }
-//   });
-// });
